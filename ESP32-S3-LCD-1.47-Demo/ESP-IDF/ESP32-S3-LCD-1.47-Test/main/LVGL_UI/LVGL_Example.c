@@ -1,5 +1,6 @@
 #include "LVGL_Example.h"
 #include "esp_netif.h"
+#include "../WLED/WLED_Controller.h"
 
 /**********************
  *  STATIC VARIABLES
@@ -30,7 +31,7 @@ void Lvgl_Example1(void)
 
     // Create a simple centered label
     ip_label = lv_label_create(lv_scr_act());
-    lv_label_set_text(ip_label, "IP Address:\nConnecting...");
+    lv_label_set_text(ip_label, "IP: Connecting...\nMAC: Loading...");
     lv_obj_set_style_text_font(ip_label, font_large, 0);
     lv_obj_set_style_text_color(ip_label, lv_color_white(), 0);
     lv_obj_set_style_text_align(ip_label, LV_TEXT_ALIGN_CENTER, 0);
@@ -56,7 +57,11 @@ void Lvgl_Example1_close(void)
 
 static void update_ip_display(lv_timer_t * timer)
 {
-    char buf[128] = {0};
+    char buf[256] = {0};
+    char mac_str[18] = {0};
+    
+    // Get MAC address
+    WLED_ESPNOW_GetMAC(mac_str);
     
     // Get IP address if WiFi is connected
     esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -65,15 +70,15 @@ static void update_ip_display(lv_timer_t * timer)
         if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
             // Check if we have a valid IP (not 0.0.0.0)
             if (ip_info.ip.addr != 0) {
-                snprintf(buf, sizeof(buf), "IP Address:\n" IPSTR, IP2STR(&ip_info.ip));
+                snprintf(buf, sizeof(buf), "IP: " IPSTR "\nMAC: %s", IP2STR(&ip_info.ip), mac_str);
             } else {
-                snprintf(buf, sizeof(buf), "IP Address:\nNot Connected");
+                snprintf(buf, sizeof(buf), "IP: Not Connected\nMAC: %s", mac_str);
             }
         } else {
-            snprintf(buf, sizeof(buf), "IP Address:\nNo WiFi");
+            snprintf(buf, sizeof(buf), "IP: No WiFi\nMAC: %s", mac_str);
         }
     } else {
-        snprintf(buf, sizeof(buf), "IP Address:\nInitializing...");
+        snprintf(buf, sizeof(buf), "IP: Initializing...\nMAC: %s", mac_str);
     }
     
     lv_label_set_text(ip_label, buf);

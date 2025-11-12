@@ -10,11 +10,22 @@
 #include "Wireless.h"
 #include "LVGL_Example.h"
 #include "WebServer.h"
+#include "WLED_Controller.h"
 
 void app_main(void)
 {
+    // Initialize WiFi first (required for ESP-NOW)
     Wireless_Init();
-    WebServer_Init();  // Start web server after WiFi initialization
+    
+    // Small delay to let WiFi stabilize
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    // Initialize ESP-NOW and trigger alarm (works without WiFi CONNECTION)
+    WLED_ESPNOW_Init();
+    WLED_ESPNOW_TriggerAlarm();  // Broadcast alarm immediately
+    
+    // Continue with normal initialization
+    WebServer_Init();      // Start web server after WiFi initialization
     Flash_Searching();
     RGB_Init();
     RGB_Example();

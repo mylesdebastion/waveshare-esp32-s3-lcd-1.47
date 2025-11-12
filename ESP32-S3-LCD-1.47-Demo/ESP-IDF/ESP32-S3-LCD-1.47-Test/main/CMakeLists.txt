@@ -8,6 +8,7 @@ idf_component_register(
                              "RGB/RGB.c"
                              "Wireless/Wireless.c"
                              "WebServer/WebServer.c"
+                             "WLED/WLED_Controller.c"
 
                         INCLUDE_DIRS 
                              "./LCD_Driver/Vernon_ST7789T" 
@@ -18,5 +19,6 @@ idf_component_register(
                              "./RGB" 
                              "./Wireless"
                              "./WebServer"
+                             "./WLED"
                              "."
                       )

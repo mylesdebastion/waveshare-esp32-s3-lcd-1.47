@@ -1,9 +1,11 @@
 #include "WebServer.h"
 #include "SD_MMC.h"
 #include "Wireless.h"
+#include "WLED_Controller.h"
 #include <esp_wifi.h>
 #include <esp_netif.h>
 #include <sys/param.h>
+#include <cJSON.h>
 
 static const char *TAG = "WebServer";
 static httpd_handle_t server = NULL;
@@ -29,6 +31,19 @@ static const char* html_page =
 ".status { text-align: center; font-size: 0.85em; opacity: 0.7; margin-top: 20px; }"
 ".loading { animation: pulse 1.5s ease-in-out infinite; }"
 "@keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }"
+"button { background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3); color: #fff; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 0.95em; margin: 5px; transition: all 0.3s; }"
+"button:hover { background: rgba(255,255,255,0.3); transform: translateY(-2px); }"
+"button:active { transform: translateY(0); }"
+".btn-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }"
+"input[type='text'] { background: rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.3); color: #fff; padding: 8px; border-radius: 6px; width: 100%; box-sizing: border-box; margin-top: 10px; }"
+"input[type='text']::placeholder { color: rgba(255,255,255,0.5); }"
+"#wled-list { margin-top: 10px; max-height: 150px; overflow-y: auto; }"
+".wled-device { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px; }"
+".wled-device button { margin: 0; padding: 5px 10px; font-size: 0.85em; }"
+".message { text-align: center; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9em; }"
+".message.success { background: rgba(0,255,0,0.2); }"
+".message.error { background: rgba(255,0,0,0.2); }"
+".mac-display { font-family: 'Courier New'; font-size: 1.2em; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; text-align: center; user-select: all; }"
 "</style>"
 "</head>"
 "<body>"
@@ -48,6 +63,22 @@ static const char* html_page =
 "<div class='info-row'><span class='label'>BLE Devices:</span><span class='value' id='ble'>Loading...</span></div>"
 "<div class='info-row'><span class='label'>Scan Status:</span><span class='value' id='scan'>Loading...</span></div>"
 "</div>"
+"<div class='section'>"
+"<h2>⚙️ WLED ESP-NOW Remote</h2>"
+"<div class='mac-display' id='mac-address'>MAC: Loading...</div>"
+"<p style='font-size:0.9em;opacity:0.8;margin-top:8px'>Add this MAC to WLED Config → WiFi → ESP-NOW Remote</p>"
+"<div class='btn-group'>"
+"<button onclick='sendWLED(1)'>🔴 Preset 1</button>"
+"<button onclick='sendWLED(2)'>🟢 Preset 2</button>"
+"<button onclick='sendWLED(3)'>🔵 Preset 3</button>"
+"</div>"
+"<div class='btn-group'>"
+"<button onclick='sendWLED(0)'>💡 Toggle</button>"
+"<button onclick='sendWLED(9)'>⬆️ Bright</button>"
+"<button onclick='sendWLED(8)'>⬇️ Dim</button>"
+"</div>"
+"<div id='wled-message'></div>"
+"</div>"
 "<div class='status'>Auto-updating every 3 seconds | <span id='last-update' class='loading'>Connecting...</span></div>"
 "</div>"
 "<script>"
@@ -60,6 +91,29 @@ static const char* html_page =
 "  if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;"
 "  if (minutes > 0) return `${minutes}m ${secs}s`;"
 "  return `${secs}s`;"
+"}"
+"function showMessage(msg, isError) {"
+"  const msgDiv = document.getElementById('wled-message');"
+"  msgDiv.textContent = msg;"
+"  msgDiv.className = 'message ' + (isError ? 'error' : 'success');"
+"  setTimeout(() => { msgDiv.textContent = ''; msgDiv.className = ''; }, 3000);"
+"}"
+"function sendWLED(btn) {"
+"  showMessage(`Sending button ${btn}...`, false);"
+"  fetch('/api/wled/button', {"
+"    method: 'POST',"
+"    body: JSON.stringify({button: btn}),"
+"    headers: {'Content-Type': 'application/json'}"
+"  })"
+"    .then(r => r.json())"
+"    .then(data => showMessage(data.message, !data.success))"
+"    .catch(e => showMessage('Send failed', true));"
+"}"
+"function loadMAC() {"
+"  fetch('/api/wled/mac')"
+"    .then(r => r.json())"
+"    .then(data => document.getElementById('mac-address').textContent = 'MAC: ' + data.mac)"
+"    .catch(e => document.getElementById('mac-address').textContent = 'MAC: Error');"
 "}"
 "function updateData() {"
 "  fetch('/api/data')"
@@ -82,6 +136,7 @@ static const char* html_page =
 "    });"
 "}"
 "updateData();"
+"loadMAC();"
 "setInterval(updateData, 3000);"
 "</script>"
 "</body>"
@@ -144,6 +199,71 @@ static esp_err_t data_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* Handler for GET /api/wled/mac */
+static esp_err_t wled_mac_get_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "Serving WLED MAC address");
+    
+    char mac_str[18];
+    esp_err_t err = WLED_ESPNOW_GetMAC(mac_str);
+    
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to get MAC");
+        return ESP_FAIL;
+    }
+    
+    char json_response[64];
+    snprintf(json_response, sizeof(json_response), "{\"mac\":\"%s\"}", mac_str);
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_response);
+    
+    return ESP_OK;
+}
+
+/* Handler for POST /api/wled/button */
+static esp_err_t wled_button_post_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "Sending WLED button code");
+    
+    char content[128];
+    int ret = httpd_req_recv(req, content, sizeof(content) - 1);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data received");
+        return ESP_FAIL;
+    }
+    content[ret] = '\0';
+    
+    cJSON *root = cJSON_Parse(content);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+    
+    cJSON *button_item = cJSON_GetObjectItem(root, "button");
+    if (!button_item || !cJSON_IsNumber(button_item)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'button' field");
+        return ESP_FAIL;
+    }
+    
+    uint8_t button_code = (uint8_t)button_item->valueint;
+    esp_err_t err = WLED_ESPNOW_SendButton(button_code);
+    
+    char json_response[128];
+    snprintf(json_response, sizeof(json_response),
+        "{\"success\":%s,\"message\":\"Button %d %s\"}",
+        (err == ESP_OK) ? "true" : "false",
+        button_code,
+        (err == ESP_OK) ? "sent" : "failed");
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_response);
+    
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 /* URI handler structure for GET / */
 static const httpd_uri_t root_uri = {
     .uri       = "/",
@@ -157,6 +277,22 @@ static const httpd_uri_t data_uri = {
     .uri       = "/api/data",
     .method    = HTTP_GET,
     .handler   = data_get_handler,
+    .user_ctx  = NULL
+};
+
+/* URI handler structure for GET /api/wled/mac */
+static const httpd_uri_t wled_mac_uri = {
+    .uri       = "/api/wled/mac",
+    .method    = HTTP_GET,
+    .handler   = wled_mac_get_handler,
+    .user_ctx  = NULL
+};
+
+/* URI handler structure for POST /api/wled/button */
+static const httpd_uri_t wled_button_uri = {
+    .uri       = "/api/wled/button",
+    .method    = HTTP_POST,
+    .handler   = wled_button_post_handler,
     .user_ctx  = NULL
 };
 
@@ -176,6 +312,8 @@ static httpd_handle_t start_webserver(void)
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &root_uri);
         httpd_register_uri_handler(server, &data_uri);
+        httpd_register_uri_handler(server, &wled_mac_uri);
+        httpd_register_uri_handler(server, &wled_button_uri);
         return server;
     }
 
