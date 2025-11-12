@@ -1,0 +1,24 @@
+/**
+ * @file wifi_config.h.example
+ * @brief WiFi Configuration Template
+ * 
+ * Copy this file to wifi_config.h and update with your WiFi credentials.
+ * The wifi_config.h file is gitignored to keep your credentials private.
+ * 
+ * Usage:
+ *   cp wifi_config.h.example wifi_config.h
+ *   # Edit wifi_config.h with your actual credentials
+ */
+
+#pragma once
+
+// WiFi Station Mode Configuration
+#define WIFI_SSID      "YourWiFiSSID"
+#define WIFI_PASSWORD  "YourWiFiPassword"
+
+// Optional: WiFi connection settings
+#define WIFI_MAXIMUM_RETRY  5
+#define WIFI_SCAN_METHOD    WIFI_FAST_SCAN
+#define WIFI_SORT_METHOD    WIFI_CONNECT_AP_BY_SIGNAL
+#define WIFI_SAE_MODE       WPA3_SAE_PWE_BOTH
+
