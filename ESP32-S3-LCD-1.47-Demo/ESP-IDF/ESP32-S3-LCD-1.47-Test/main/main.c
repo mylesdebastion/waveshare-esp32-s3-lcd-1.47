@@ -9,10 +9,12 @@
 #include "RGB.h"
 #include "Wireless.h"
 #include "LVGL_Example.h"
+#include "WebServer.h"
 
 void app_main(void)
 {
     Wireless_Init();
+    WebServer_Init();  // Start web server after WiFi initialization
     Flash_Searching();
     RGB_Init();
     RGB_Example();
